@@ -7,7 +7,7 @@ from keras.layers import Dense, LSTM, Dropout
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 import streamlit as st
 
-# Set Kaggle API credentials if required
+# Set Kaggle API
 if "KAGGLE_USERNAME" in st.secrets and "KAGGLE_KEY" in st.secrets:
     os.environ["KAGGLE_USERNAME"] = st.secrets["KAGGLE_USERNAME"]
     os.environ["KAGGLE_KEY"] = st.secrets["KAGGLE_KEY"]
