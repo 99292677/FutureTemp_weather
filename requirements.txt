@@ -1,8 +1,6 @@
 streamlit
 pandas
 numpy
-plotly
-keras
-tensorflow
+matplotlib
+seaborn
 scikit-learn
-kaggle
