@@ -1,5 +1,4 @@
 import os
-import sys
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -7,50 +6,23 @@ from keras.models import Sequential, load_model
 from keras.layers import Dense, LSTM, Dropout
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 import streamlit as st
+import kagglehub  # ต้องติดตั้งด้วย pip install kagglehub
 
-# ตั้งค่า Kaggle API credentials จาก st.secrets หากมี
-kaggle_username = st.secrets.get("KAGGLE_USERNAME", None)
-kaggle_key = st.secrets.get("KAGGLE_KEY", None)
-if kaggle_username and kaggle_key:
-    os.environ["KAGGLE_USERNAME"] = kaggle_username
-    os.environ["KAGGLE_KEY"] = kaggle_key
+# ---------------------------
+# ดาวน์โหลด dataset จาก Kaggle
+# ---------------------------
+# ดาวน์โหลด dataset โดยใช้ kagglehub
+path = kagglehub.dataset_download("ananthr1/weather-prediction")
+data_path = os.path.join(path, 'seattle-weather.csv')
 
-def download_dataset():
-    # พยายามดาวน์โหลดไฟล์จาก Kaggle หาก credentials มีอยู่
-    exit_code = os.system("kaggle datasets download -d ananthr1/weather-prediction --unzip")
-    return exit_code
+# ---------------------------
+# โหลดข้อมูลและเตรียมข้อมูล
+# ---------------------------
+data = pd.read_csv(data_path)
+data.dropna(inplace=True)  # ลบค่า missing
+data['date'] = pd.to_datetime(data['date'])  # แปลงคอลัมน์วันที่เป็น datetime
 
-# ใช้ caching ในการโหลดข้อมูล
-@st.cache_data(show_spinner=False)
-def load_data():
-    dataset_path = "seattle-weather.csv"
-    # ถ้าไฟล์ไม่มีในระบบ
-    if not os.path.exists(dataset_path):
-        st.warning("ไม่พบไฟล์ 'seattle-weather.csv' บนระบบ")
-        # หากมี Kaggle credentials ให้พยายามดาวน์โหลด
-        if kaggle_username and kaggle_key:
-            st.info("กำลังดาวน์โหลดไฟล์จาก Kaggle...")
-            exit_code = download_dataset()
-            if exit_code != 0 or not os.path.exists(dataset_path):
-                st.error("ดาวน์โหลดไฟล์ไม่สำเร็จ กรุณาตรวจสอบ Kaggle API credentials หรืออัปโหลดไฟล์")
-                st.stop()
-        else:
-            st.error("ไม่พบ Kaggle API credentials กรุณาอัปโหลดไฟล์ 'seattle-weather.csv' ")
-            uploaded_file = st.file_uploader("อัปโหลดไฟล์ seattle-weather.csv", type=["csv"])
-            if uploaded_file is not None:
-                # อ่านไฟล์ที่อัปโหลดและบันทึกลงในระบบ
-                data = pd.read_csv(uploaded_file)
-                data.to_csv(dataset_path, index=False)
-            else:
-                st.stop()
-    data = pd.read_csv(dataset_path)
-    data.dropna(inplace=True)  # ลบค่า missing
-    data['date'] = pd.to_datetime(data['date'])  # แปลงคอลัมน์ date เป็น datetime
-    return data
-
-data = load_data()
-
-# เตรียมข้อมูลสำหรับเทรน
+# Prepare Data for Training
 training = data['temp_max'].values.reshape(-1, 1)
 
 def df_to_XY(data_array, window_size=10):
@@ -68,36 +40,36 @@ X_train, y_train = X[:800], y[:800]
 X_val, y_val = X[800:1000], y[800:1000]
 X_test, y_test = X[1000:], y[1000:]
 
-# ปรับขนาดข้อมูลสำหรับ LSTM
+# Reshape สำหรับ LSTM
 X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
 X_val   = X_val.reshape(X_val.shape[0], X_val.shape[1], 1)
 X_test  = X_test.reshape(X_test.shape[0], X_test.shape[1], 1)
 
-# ใช้ caching ในการโหลดหรือเทรนโมเดล
-@st.cache_resource(show_spinner=False)
-def get_model():
-    if os.path.exists('lstm_weather_model.h5'):
-        model = load_model('lstm_weather_model.h5')
-    else:
-        model = Sequential([
-            LSTM(50, return_sequences=True, input_shape=(X_train.shape[1], 1)),
-            Dropout(0.2),
-            LSTM(50, return_sequences=True),
-            Dropout(0.2),
-            LSTM(50, return_sequences=True),
-            Dropout(0.2),
-            LSTM(50),
-            Dropout(0.2),
-            Dense(1)
-        ])
-        model.compile(optimizer='adam', loss='mean_squared_error')
-        model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=50, batch_size=32)
-        model.save('lstm_weather_model.h5')
-    return model
+# ----------------------------------------
+# สร้าง/โหลดโมเดล LSTM (ถ้ายังไม่มีโมเดลที่บันทึกไว้)
+# ----------------------------------------
+if not os.path.exists('lstm_weather_model.h5'):
+    model = Sequential([
+        LSTM(50, return_sequences=True, input_shape=(X_train.shape[1], 1)),
+        Dropout(0.2),
+        LSTM(50, return_sequences=True),
+        Dropout(0.2),
+        LSTM(50, return_sequences=True),
+        Dropout(0.2),
+        LSTM(50),
+        Dropout(0.2),
+        Dense(1)
+    ])
+    model.compile(optimizer='adam', loss='mean_squared_error')
+    model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=50, batch_size=32)
+    model.save('lstm_weather_model.h5')
 
-model = get_model()
+# โหลดโมเดลที่บันทึกไว้
+model = load_model('lstm_weather_model.h5')
 
-# ตั้งค่า Streamlit Page
+# ---------------------------
+# Streamlit App
+# ---------------------------
 st.set_page_config(page_title="Seattle Weather Predictor", page_icon="🌤️", layout="wide")
 
 # Title Section
@@ -120,9 +92,9 @@ if st.sidebar.button("🌡️ Predict Temperature"):
     input_data = np.array(inputs).reshape(1, -1, 1)
     prediction = model.predict(input_data)[0][0]
 
-    # จำลองค่า actual temperature สำหรับการคำนวณ metrics (ปรับให้ใช้ข้อมูลจริงได้หากมี)
+    # จำลอง actual temperature สำหรับคำนวณ metrics (ปรับปรุงใช้ข้อมูลจริงได้หากมี)
     actual_temp = [input_data[0, -1, 0] + np.random.uniform(-2, 2)]
-
+    
     mae = mean_absolute_error(actual_temp, [prediction])
     rmse = np.sqrt(mean_squared_error(actual_temp, [prediction]))
     accuracy = 100 - (abs(actual_temp[0] - prediction) / abs(actual_temp[0]) * 100)
@@ -146,7 +118,7 @@ if st.sidebar.button("🌡️ Predict Temperature"):
         'Temperature': inputs + [actual_temp[0]],
         'Type': ['Input'] * len(inputs) + ['Actual']
     })
-    df_plot.loc[len(df_plot) - 1, 'Type'] = 'Prediction'
+    df_plot.loc[len(df_plot)-1, 'Type'] = 'Prediction'
     fig = px.line(df_plot, x='Day', y='Temperature', color='Type',
                   title="Temperature Predictions vs Actual",
                   labels={'Temperature': 'Temperature (°C)', 'Day': 'Day'},
