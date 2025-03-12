@@ -8,25 +8,44 @@ from keras.layers import Dense, LSTM, Dropout
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 import streamlit as st
 
-# ตั้งค่า Kaggle API credentials จาก st.secrets
-if "KAGGLE_USERNAME" in st.secrets and "KAGGLE_KEY" in st.secrets:
-    os.environ["KAGGLE_USERNAME"] = st.secrets["KAGGLE_USERNAME"]
-    os.environ["KAGGLE_KEY"] = st.secrets["KAGGLE_KEY"]
+# ตั้งค่า Kaggle API credentials จาก st.secrets หากมี
+kaggle_username = st.secrets.get("KAGGLE_USERNAME", None)
+kaggle_key = st.secrets.get("KAGGLE_KEY", None)
+if kaggle_username and kaggle_key:
+    os.environ["KAGGLE_USERNAME"] = kaggle_username
+    os.environ["KAGGLE_KEY"] = kaggle_key
+
+def download_dataset():
+    # พยายามดาวน์โหลดไฟล์จาก Kaggle หาก credentials มีอยู่
+    exit_code = os.system("kaggle datasets download -d ananthr1/weather-prediction --unzip")
+    return exit_code
 
 # ใช้ caching ในการโหลดข้อมูล
 @st.cache_data(show_spinner=False)
 def load_data():
     dataset_path = "seattle-weather.csv"
-    # หากไม่มีไฟล์ ให้ดาวน์โหลดจาก Kaggle
+    # ถ้าไฟล์ไม่มีในระบบ
     if not os.path.exists(dataset_path):
-        st.warning("ไม่พบไฟล์ 'seattle-weather.csv' บนระบบ กำลังดาวน์โหลดจาก Kaggle...")
-        exit_code = os.system("kaggle datasets download -d ananthr1/weather-prediction --unzip")
-        if exit_code != 0 or not os.path.exists(dataset_path):
-            st.error("ไม่พบไฟล์ 'seattle-weather.csv' กรุณาตรวจสอบ Kaggle API credentials หรืออัปโหลดไฟล์ขึ้นมาเอง")
-            st.stop()
+        st.warning("ไม่พบไฟล์ 'seattle-weather.csv' บนระบบ")
+        # หากมี Kaggle credentials ให้พยายามดาวน์โหลด
+        if kaggle_username and kaggle_key:
+            st.info("กำลังดาวน์โหลดไฟล์จาก Kaggle...")
+            exit_code = download_dataset()
+            if exit_code != 0 or not os.path.exists(dataset_path):
+                st.error("ดาวน์โหลดไฟล์ไม่สำเร็จ กรุณาตรวจสอบ Kaggle API credentials หรืออัปโหลดไฟล์ด้วยตนเอง")
+                st.stop()
+        else:
+            st.error("ไม่พบ Kaggle API credentials กรุณาอัปโหลดไฟล์ 'seattle-weather.csv' ด้วยตนเอง")
+            uploaded_file = st.file_uploader("อัปโหลดไฟล์ seattle-weather.csv", type=["csv"])
+            if uploaded_file is not None:
+                # อ่านไฟล์ที่อัปโหลดและบันทึกลงในระบบ
+                data = pd.read_csv(uploaded_file)
+                data.to_csv(dataset_path, index=False)
+            else:
+                st.stop()
     data = pd.read_csv(dataset_path)
     data.dropna(inplace=True)  # ลบค่า missing
-    data['date'] = pd.to_datetime(data['date'])  # แปลงคอลัมน์ date
+    data['date'] = pd.to_datetime(data['date'])  # แปลงคอลัมน์ date เป็น datetime
     return data
 
 data = load_data()
@@ -101,14 +120,13 @@ if st.sidebar.button("🌡️ Predict Temperature"):
     input_data = np.array(inputs).reshape(1, -1, 1)
     prediction = model.predict(input_data)[0][0]
 
-    # จำลองค่า actual temperature สำหรับการคำนวณ metrics (สามารถปรับให้ใช้ข้อมูลจริงได้)
+    # จำลองค่า actual temperature สำหรับการคำนวณ metrics (ปรับให้ใช้ข้อมูลจริงได้หากมี)
     actual_temp = [input_data[0, -1, 0] + np.random.uniform(-2, 2)]
 
     mae = mean_absolute_error(actual_temp, [prediction])
     rmse = np.sqrt(mean_squared_error(actual_temp, [prediction]))
     accuracy = 100 - (abs(actual_temp[0] - prediction) / abs(actual_temp[0]) * 100)
 
-    # Result Cards
     st.markdown("## 📊 Results")
     st.success(f"🌡️ **Predicted Temperature**: {prediction:.2f} °C")
     st.info(f"📏 **Simulated Actual Temperature**: {actual_temp[0]:.2f} °C")
