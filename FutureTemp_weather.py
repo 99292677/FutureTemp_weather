@@ -1,49 +1,37 @@
-import sys
 import os
+import sys
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import streamlit as st
+from keras.models import Sequential, load_model
+from keras.layers import Dense, LSTM, Dropout
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+import streamlit as st
 
-# ตรวจสอบเวอร์ชัน Python
-if sys.version_info.major == 3 and sys.version_info.minor >= 13:
-    sys.exit("TensorFlow ยังไม่รองรับ Python 3.13 กรุณาใช้ Python 3.9 หรือ 3.10 แทน")
-
-try:
-    from tensorflow.keras.models import Sequential, load_model
-    from tensorflow.keras.layers import Dense, LSTM, Dropout
-except ModuleNotFoundError:
-    sys.exit("ไม่พบโมดูล 'tensorflow' กรุณาติดตั้ง TensorFlow ด้วยคำสั่ง: pip install tensorflow (โดยใช้ Python เวอร์ชันที่รองรับ)")
-
-# ตั้งค่า Kaggle API (ตรวจสอบว่า credentials ถูกต้องหรือไม่)
+# ตั้งค่า Kaggle API credentials จาก st.secrets
 if "KAGGLE_USERNAME" in st.secrets and "KAGGLE_KEY" in st.secrets:
     os.environ["KAGGLE_USERNAME"] = st.secrets["KAGGLE_USERNAME"]
     os.environ["KAGGLE_KEY"] = st.secrets["KAGGLE_KEY"]
 
-# ใช้ caching สำหรับการโหลดข้อมูล
+# ใช้ caching ในการโหลดข้อมูล
 @st.cache_data(show_spinner=False)
 def load_data():
     dataset_path = "seattle-weather.csv"
+    # หากไม่มีไฟล์ ให้ดาวน์โหลดจาก Kaggle
     if not os.path.exists(dataset_path):
-        # พยายามดาวน์โหลดไฟล์จาก Kaggle หากเป็นไปได้
-        st.warning("ไม่พบไฟล์ 'seattle-weather.csv' บนระบบ ลองดาวน์โหลดไฟล์จาก Kaggle...")
+        st.warning("ไม่พบไฟล์ 'seattle-weather.csv' บนระบบ กำลังดาวน์โหลดจาก Kaggle...")
         exit_code = os.system("kaggle datasets download -d ananthr1/weather-prediction --unzip")
         if exit_code != 0 or not os.path.exists(dataset_path):
             st.error("ไม่พบไฟล์ 'seattle-weather.csv' กรุณาตรวจสอบ Kaggle API credentials หรืออัปโหลดไฟล์ขึ้นมาเอง")
             st.stop()
     data = pd.read_csv(dataset_path)
     data.dropna(inplace=True)  # ลบค่า missing
-    data['date'] = pd.to_datetime(data['date'])  # แปลงคอลัมน์วันที่
+    data['date'] = pd.to_datetime(data['date'])  # แปลงคอลัมน์ date
     return data
 
 data = load_data()
 
-# ตรวจสอบว่าข้อมูลถูกโหลดหรือไม่
-if data is None:
-    st.stop()
-
-# เตรียมข้อมูลสำหรับการเทรน
+# เตรียมข้อมูลสำหรับเทรน
 training = data['temp_max'].values.reshape(-1, 1)
 
 def df_to_XY(data_array, window_size=10):
@@ -63,10 +51,10 @@ X_test, y_test = X[1000:], y[1000:]
 
 # ปรับขนาดข้อมูลสำหรับ LSTM
 X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
-X_val = X_val.reshape(X_val.shape[0], X_val.shape[1], 1)
-X_test = X_test.reshape(X_test.shape[0], X_test.shape[1], 1)
+X_val   = X_val.reshape(X_val.shape[0], X_val.shape[1], 1)
+X_test  = X_test.reshape(X_test.shape[0], X_test.shape[1], 1)
 
-# ใช้ caching สำหรับการโหลดหรือเทรนโมเดล
+# ใช้ caching ในการโหลดหรือเทรนโมเดล
 @st.cache_resource(show_spinner=False)
 def get_model():
     if os.path.exists('lstm_weather_model.h5'):
@@ -84,7 +72,7 @@ def get_model():
             Dense(1)
         ])
         model.compile(optimizer='adam', loss='mean_squared_error')
-        model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=50, batch_size=32, verbose=0)
+        model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=50, batch_size=32)
         model.save('lstm_weather_model.h5')
     return model
 
@@ -93,14 +81,14 @@ model = get_model()
 # ตั้งค่า Streamlit Page
 st.set_page_config(page_title="Seattle Weather Predictor", page_icon="🌤️", layout="wide")
 
-# ส่วน Title
+# Title Section
 st.title("🌤️ FutureTemp Weather Predictor")
 st.markdown("""
-Welcome to the **FutureTemp**! This tool uses **LSTM Neural Networks** to forecast the temperature based on historical data. 
+Welcome to the **FutureTemp**! This tool uses **LSTM Neural Networks** to forecast the temperature based on historical data.
 Enjoy a visually appealing and interactive experience. 🚀
 """)
 
-# Sidebar สำหรับ Input
+# Sidebar Section for Input
 st.sidebar.header("🔧 Configure Inputs")
 st.sidebar.markdown("Adjust the input parameters below:")
 window_size_input = st.sidebar.slider("Number of Days for Prediction", min_value=5, max_value=20, value=10)
@@ -108,18 +96,19 @@ inputs = []
 for i in range(window_size_input):
     inputs.append(st.sidebar.number_input(f"Day {i+1} Temperature (°C):", value=10.0))
 
-# ส่วนการคำนวณและแสดงผล
+# Prediction and Metrics Section
 if st.sidebar.button("🌡️ Predict Temperature"):
     input_data = np.array(inputs).reshape(1, -1, 1)
     prediction = model.predict(input_data)[0][0]
 
-    # จำลองค่า actual temperature สำหรับการคำนวณ metrics (เปลี่ยนได้หากมีข้อมูลจริง)
+    # จำลองค่า actual temperature สำหรับการคำนวณ metrics (สามารถปรับให้ใช้ข้อมูลจริงได้)
     actual_temp = [input_data[0, -1, 0] + np.random.uniform(-2, 2)]
 
     mae = mean_absolute_error(actual_temp, [prediction])
     rmse = np.sqrt(mean_squared_error(actual_temp, [prediction]))
     accuracy = 100 - (abs(actual_temp[0] - prediction) / abs(actual_temp[0]) * 100)
 
+    # Result Cards
     st.markdown("## 📊 Results")
     st.success(f"🌡️ **Predicted Temperature**: {prediction:.2f} °C")
     st.info(f"📏 **Simulated Actual Temperature**: {actual_temp[0]:.2f} °C")
@@ -131,7 +120,8 @@ if st.sidebar.button("🌡️ Predict Temperature"):
         st.metric("Root Mean Squared Error (RMSE)", f"{rmse:.2f} °C")
     with col3:
         st.metric("Prediction Accuracy (%)", f"{accuracy:.2f} %")
-
+    
+    # Graph Section
     st.markdown("## 📈 Temperature Visualization")
     df_plot = pd.DataFrame({
         'Day': range(len(inputs) + 1),
@@ -145,6 +135,7 @@ if st.sidebar.button("🌡️ Predict Temperature"):
                   template="plotly_white")
     st.plotly_chart(fig, use_container_width=True)
 
+# Footer Section
 st.markdown("""
     ---
     Made with ❤️ by **by Boss 👦🏻 Ice 🧊 Film 🎞️**
