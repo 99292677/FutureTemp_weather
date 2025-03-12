@@ -32,7 +32,7 @@ def load_data():
             st.info("กำลังดาวน์โหลดไฟล์จาก Kaggle...")
             exit_code = download_dataset()
             if exit_code != 0 or not os.path.exists(dataset_path):
-                st.error("ดาวน์โหลดไฟล์ไม่สำเร็จ กรุณาตรวจสอบ Kaggle API credentials หรืออัปโหลดไฟล์ด้วยตนเอง")
+                st.error("ดาวน์โหลดไฟล์ไม่สำเร็จ กรุณาตรวจสอบ Kaggle API credentials หรืออัปโหลดไฟล์")
                 st.stop()
         else:
             st.error("ไม่พบ Kaggle API credentials กรุณาอัปโหลดไฟล์ 'seattle-weather.csv' ด้วยตนเอง")
