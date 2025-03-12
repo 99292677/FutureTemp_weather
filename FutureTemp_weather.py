@@ -16,7 +16,7 @@ try:
 except ModuleNotFoundError:
     sys.exit("ไม่พบโมดูล 'tensorflow' กรุณาติดตั้ง TensorFlow ด้วยคำสั่ง: pip install tensorflow (โดยใช้ Python เวอร์ชันที่รองรับ)")
 
-# ตั้งค่า Kaggle API
+# ตั้งค่า Kaggle API (ตรวจสอบว่า credentials ถูกต้องหรือไม่)
 if "KAGGLE_USERNAME" in st.secrets and "KAGGLE_KEY" in st.secrets:
     os.environ["KAGGLE_USERNAME"] = st.secrets["KAGGLE_USERNAME"]
     os.environ["KAGGLE_KEY"] = st.secrets["KAGGLE_KEY"]
@@ -24,14 +24,24 @@ if "KAGGLE_USERNAME" in st.secrets and "KAGGLE_KEY" in st.secrets:
 # ใช้ caching สำหรับการโหลดข้อมูล
 @st.cache_data(show_spinner=False)
 def load_data():
-    if not os.path.exists("seattle-weather.csv"):
-        os.system("kaggle datasets download -d ananthr1/weather-prediction --unzip")
-    data = pd.read_csv('seattle-weather.csv')
-    data.dropna(inplace=True)
-    data['date'] = pd.to_datetime(data['date'])
+    dataset_path = "seattle-weather.csv"
+    if not os.path.exists(dataset_path):
+        # พยายามดาวน์โหลดไฟล์จาก Kaggle หากเป็นไปได้
+        st.warning("ไม่พบไฟล์ 'seattle-weather.csv' บนระบบ ลองดาวน์โหลดไฟล์จาก Kaggle...")
+        exit_code = os.system("kaggle datasets download -d ananthr1/weather-prediction --unzip")
+        if exit_code != 0 or not os.path.exists(dataset_path):
+            st.error("ไม่พบไฟล์ 'seattle-weather.csv' กรุณาตรวจสอบ Kaggle API credentials หรืออัปโหลดไฟล์ขึ้นมาเอง")
+            st.stop()
+    data = pd.read_csv(dataset_path)
+    data.dropna(inplace=True)  # ลบค่า missing
+    data['date'] = pd.to_datetime(data['date'])  # แปลงคอลัมน์วันที่
     return data
 
 data = load_data()
+
+# ตรวจสอบว่าข้อมูลถูกโหลดหรือไม่
+if data is None:
+    st.stop()
 
 # เตรียมข้อมูลสำหรับการเทรน
 training = data['temp_max'].values.reshape(-1, 1)
