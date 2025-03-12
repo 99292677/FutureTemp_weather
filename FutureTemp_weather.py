@@ -35,7 +35,7 @@ def load_data():
                 st.error("ดาวน์โหลดไฟล์ไม่สำเร็จ กรุณาตรวจสอบ Kaggle API credentials หรืออัปโหลดไฟล์")
                 st.stop()
         else:
-            st.error("ไม่พบ Kaggle API credentials กรุณาอัปโหลดไฟล์ 'seattle-weather.csv' ด้วยตนเอง")
+            st.error("ไม่พบ Kaggle API credentials กรุณาอัปโหลดไฟล์ 'seattle-weather.csv' ")
             uploaded_file = st.file_uploader("อัปโหลดไฟล์ seattle-weather.csv", type=["csv"])
             if uploaded_file is not None:
                 # อ่านไฟล์ที่อัปโหลดและบันทึกลงในระบบ
